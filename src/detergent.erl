@@ -237,6 +237,13 @@ call_attach(#wsdl{operations = Operations, model = Model},
             {ok, _Code, _ReturnHeaders, Body} ->
                 ResponseLogger(Body),
                 parseMessage(Body, Model);
+            {ok, _Code, _ReturnHeaders, Body, ReqResp} ->
+                case parseMessage(Body, Model) of
+                    {ok, NewHeader, NewBody} ->
+                        {ok, NewHeader, NewBody, ReqResp};
+                    Other ->
+                        Other
+                end;
             Error ->
                 %% in case of HTTP error: return
                             %% {error, description}
@@ -505,7 +512,12 @@ lhttpc_request(URL, SoapAction, Request, Options, Headers, ContentType) ->
                               true -> zlib:gunzip(ResponseBody);
                               false -> ResponseBody
                           end,
-            {ok, Code, ResponseHeaders, NewRespBody};
+            case proplists:get_bool(return_payload, Options) of
+                true ->
+                    {ok, Code, ResponseHeaders, NewRespBody, {Request, NewRespBody}};
+                false ->
+                    {ok, Code, ResponseHeaders, NewRespBody}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
