@@ -29,7 +29,8 @@
 %%% For testing...
 -export([qtest/0]).
 
--include_lib("detergent.hrl").
+-include_lib("detergent/include/detergent.hrl").
+-include_lib("erlsom/src/erlsom_compile.hrl").
 
 -define(HTTP_REQ_TIMEOUT, 60000).
 
@@ -397,15 +398,32 @@ addSchemas([Xsd| Tail], AccModel, Prefix, Options, ImportList, Num) ->
                AccModel;
              _ ->
                {ok, Model} =
-                 erlsom_compile:compile_parsed_xsd(Xsd,
-                                                   [{prefix, Prefix++integer_to_list(Num)},
-                                                    {include_files, ImportList} |Options]),
+                 erlsom_compile:compile_parsed_xsd(
+                   Xsd,
+                   [{prefix, Prefix++integer_to_list(Num)},
+                    {include_files, ImportList},
+                    {include_fun, find_file_fun(Prefix)} |
+                    Options]),
                case AccModel of
                  undefined -> Model;
                  _ -> erlsom:add_model(AccModel, Model)
                end
            end,
   addSchemas(Tail, Model2, Prefix, Options, ImportList, Num+1).
+
+find_file_fun(TopPrefix) ->
+    fun(Namespace, Location, IncludeFiles, _IncludeDirs) ->
+            io:format("Ns:~p Loc:~p --> ", [Namespace, Location]),
+            case lists:keysearch(Namespace, 1, IncludeFiles) of
+                {value, {_, Prefix, Schema = #schemaType{}}} ->
+                    {Schema, Prefix};
+                {value, {_, Prefix, undefined}} ->
+                    {element(2, get_url_file(Location)), Prefix};
+                _ ->
+                    {element(2, get_url_file(Location)), TopPrefix}
+            end
+    end.
+
 
 %%% --------------------------------------------------------------------
 %%% Get a file from an URL spec.
