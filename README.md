@@ -48,9 +48,8 @@ Detergent.
 To test your Detergent build, start an Erlang
 shell and run the detergent:qtest/0 function.
 
-The qtest/0 function attempts to call a web
-service at webservicex.net to retrieve the
-weather repeat for Boston.
+The qtest/0 function attempts to call a geoIP web
+service at webservicex.net.
 
     $ erl -pa deps/erlsom/ebin ebin
     > inets:start().

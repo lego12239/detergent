@@ -61,9 +61,9 @@ write_hrl(WsdlURL, Output, Prefix) when is_list(WsdlURL),is_list(Prefix) ->
 
 %%% For testing only...
 qtest() ->
-  call("http://www.webservicex.net/WeatherForecast.asmx?WSDL",
-        "GetWeatherByPlaceName",
-        ["Boston"]).
+  call("http://www.webservicex.net/geoipservice.asmx?WSDL",
+	"GetGeoIP",
+	["68.69.60.1"]).
 
 %%% --------------------------------------------------------------------
 %%% Access functions
