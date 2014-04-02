@@ -400,7 +400,8 @@ addSchemas([Xsd| Tail], AccModel, Prefix, Options, ImportList, Num) ->
                {ok, Model} =
                  erlsom_compile:compile_parsed_xsd(
                    Xsd,
-                   [{prefix, Prefix++integer_to_list(Num)},
+%                   [{prefix, Prefix++integer_to_list(Num)},
+                    [{prefix, Prefix},
                     {include_files, ImportList},
                     {include_fun, find_file_fun(Prefix)} |
                     Options]),
