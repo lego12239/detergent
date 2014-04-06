@@ -508,35 +508,47 @@ ibrowse_request(URL, SoapAction, Request, Options, Headers, ContentType) ->
     end.
 
 lhttpc_request(URL, SoapAction, Request, Options, Headers, ContentType) ->
-    {NewHeaders, NewReq} = case Gzip = proplists:get_bool(gzip, Options) of
-                               true ->
-                                   {[{"Content-Encoding", "gzip"},
-                                     {"Accept-Encoding", "gzip"},
-                                     {"User-Agent", "detergent, gzip"}],
-                                    zlib:gzip(Request)};
-                               false ->
-                                   {[], Request}
-                           end,
-    FinalHeaders = [{"Content-Type", ContentType},
-                    {"SOAPAction", SoapAction} | NewHeaders ++ Headers],
-    case lhttpc:request(URL, post, FinalHeaders, NewReq, ?HTTP_REQ_TIMEOUT) of
-        {ok, {{Code, _Status}, ResponseHeaders, ResponseBody}} ->
-            NewRespBody = case Gzip of
-                              true -> zlib:gunzip(ResponseBody);
-                              false -> ResponseBody
-                          end,
-            case proplists:get_bool(return_payload, Options) of
-                true ->
-                    {ok, Code, ResponseHeaders, NewRespBody, {Request, NewRespBody}};
-                false ->
-                    {ok, Code, ResponseHeaders, NewRespBody}
-            end;
-        {error, Reason} ->
-            {error, Reason}
+    case start_lhttpc() of
+	ok ->
+	    {NewHeaders, NewReq} = case Gzip = proplists:get_bool(gzip, Options) of
+				       true ->
+					   {[{"Content-Encoding", "gzip"},
+					     {"Accept-Encoding", "gzip"},
+					     {"User-Agent", "detergent, gzip"}],
+					    zlib:gzip(Request)};
+				       false ->
+					   {[], Request}
+				   end,
+	    FinalHeaders = [{"Content-Type", ContentType},
+			    {"SOAPAction", SoapAction} | NewHeaders ++ Headers],
+	    case lhttpc:request(URL, post, FinalHeaders, NewReq, ?HTTP_REQ_TIMEOUT) of
+		{ok, {{Code, _Status}, ResponseHeaders, ResponseBody}} ->
+		    NewRespBody = case Gzip of
+				      true -> zlib:gunzip(ResponseBody);
+				      false -> ResponseBody
+				  end,
+		    case proplists:get_bool(return_payload, Options) of
+			true ->
+			    {ok, Code, ResponseHeaders, NewRespBody, {Request, NewRespBody}};
+			false ->
+			    {ok, Code, ResponseHeaders, NewRespBody}
+		    end;
+		{error, Reason} ->
+		    {error, Reason}
+	    end;
+	error ->
+            {error, "could not start ibrowse"}
     end.
 
 start_ibrowse() ->
     case ibrowse:start() of
+    {ok, _} -> ok;
+    {error, {already_started, _}} -> ok;
+    _ -> error
+    end.
+
+start_lhttpc() ->
+    case lhttpc:start() of
     {ok, _} -> ok;
     {error, {already_started, _}} -> ok;
     _ -> error
