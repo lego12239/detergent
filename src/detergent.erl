@@ -299,11 +299,14 @@ mk_envelope(Messages, Headers) when is_list(Messages),is_list(Headers) ->
 %%% Parse a WSDL file and return a 'Model'
 %%% --------------------------------------------------------------------
 initModel(WsdlFile) ->
-    initModel(WsdlFile, ?DEFAULT_PREFIX).
+    initModel(WsdlFile, [{prefix, ?DEFAULT_PREFIX},
+                         {namespaces, []}]).
 
-initModel(WsdlFile, Prefix) ->
+initModel(WsdlFile, Options) ->
+	Prefix = proplists:get_value(prefix, Options, ?DEFAULT_PREFIX),
+	Ns = proplists:get_value(namespaces, Options, []),
     PrivDir = priv_dir(),
-    initModel2(WsdlFile, Prefix, PrivDir, undefined, undefined).
+    initModel2(WsdlFile, Prefix, Ns, PrivDir, undefined, undefined).
 
 initModelFile(ConfigFile) ->
     {ok, ConfigSchema} = erlsom:compile_xsd(config_file_xsd()),
@@ -313,7 +316,7 @@ initModelFile(ConfigFile) ->
               wsdl_file = Wsdl,
               add_files = AddFiles} = Config,
     #xsd_file{name = WsdlFile, prefix = Prefix, import_specs = Import} = Wsdl,
-    initModel2(WsdlFile, Prefix, XsdPath, Import, AddFiles).
+    initModel2(WsdlFile, Prefix, [], XsdPath, Import, AddFiles).
 
 priv_dir() ->
     case code:priv_dir(detergent) of
@@ -323,7 +326,7 @@ priv_dir() ->
             A
     end.
 
-initModel2(WsdlFile, Prefix, Path, Import, AddFiles) ->
+initModel2(WsdlFile, Prefix, Ns, Path, Import, AddFiles) ->
     WsdlName = filename:join([Path, "wsdl.xsd"]),
     IncludeWsdl = {"http://schemas.xmlsoap.org/wsdl/", "wsdl", WsdlName},
     {ok, WsdlModel} = erlsom:compile_xsd_file(filename:join([Path, "soap.xsd"]),
@@ -334,7 +337,7 @@ initModel2(WsdlFile, Prefix, Path, Import, AddFiles) ->
     IncludeDir = filename:dirname(WsdlFile),
     Options = [{dir_list, [IncludeDir]} | makeOptions(Import)],
     %% parse Wsdl
-    {Model, Operations} = parseWsdls([WsdlFile], Prefix, WsdlModel2, Options, {undefined, []}),
+    {Model, Operations} = parseWsdls([WsdlFile], Prefix, Ns, WsdlModel2, Options, {undefined, []}),
     %% TODO: add files as required
     %% now compile envelope.xsd, and add Model
     {ok, EnvelopeModel} = erlsom:compile_xsd_file(filename:join([Path, "envelope.xsd"]),
@@ -348,9 +351,9 @@ initModel2(WsdlFile, Prefix, Path, Import, AddFiles) ->
 %%% Parse a list of WSDLs and import (recursively)
 %%% Returns {Model, Operations}
 %%% --------------------------------------------------------------------
-parseWsdls([], _Prefix, _WsdlModel, _Options, Acc) ->
+parseWsdls([], _Prefix, _Ns, _WsdlModel, _Options, Acc) ->
   Acc;
-parseWsdls([WsdlFile | Tail], Prefix, WsdlModel, Options, {AccModel, AccOperations}) ->
+parseWsdls([WsdlFile | Tail], Prefix, Ns, WsdlModel, Options, {AccModel, AccOperations}) ->
   {ok, WsdlFileContent} = get_url_file(rmsp(WsdlFile)),
   {ok, ParsedWsdl, _} = erlsom:scan(WsdlFileContent, WsdlModel),
   %% get the xsd elements from this model, and hand it over to erlsom_compile.
@@ -360,7 +363,7 @@ parseWsdls([WsdlFile | Tail], Prefix, WsdlModel, Options, {AccModel, AccOperatio
   %% generates wsdls that depend on this feature.
   ImportList = makeImportList(Xsds, []),
   %% TODO: pass the right options here
-  Model2 = addSchemas(Xsds, AccModel, Prefix, Options, ImportList),
+  Model2 = addSchemas(Xsds, AccModel, Prefix, Ns, Options, ImportList),
   Ports = getPorts(ParsedWsdl),
   Operations = getOperations(ParsedWsdl, Ports),
   Imports = getImports(ParsedWsdl),
@@ -369,8 +372,8 @@ parseWsdls([WsdlFile | Tail], Prefix, WsdlModel, Options, {AccModel, AccOperatio
   %% processed as well).
   %% For the moment, the namespace is ignored on operations etc.
   %% this makes it a bit easier to deal with imported wsdl's.
-  Acc3 = parseWsdls(Imports, Prefix, WsdlModel, Options, Acc2),
-  parseWsdls(Tail, Prefix, WsdlModel, Options, Acc3).
+  Acc3 = parseWsdls(Imports, Prefix, Ns, WsdlModel, Options, Acc2),
+  parseWsdls(Tail, Prefix, Ns, WsdlModel, Options, Acc3).
 
 %%% --------------------------------------------------------------------
 %%% build a list: [{Namespace, Xsd}, ...] for all the Xsds in the WSDL.
@@ -388,11 +391,11 @@ makeImportList([ Xsd | Tail], Acc) ->
 %%% Returns Model
 %%% (TODO: using the same prefix for all XSDS makes no sense)
 %%% --------------------------------------------------------------------
-addSchemas(Xsds, AccModel, _Prefix, _Options, _ImportList) ->
-    addSchemas(Xsds, AccModel, _Prefix, _Options, _ImportList, 0).
-addSchemas([], AccModel, _Prefix, _Options, _ImportList, _) ->
+addSchemas(Xsds, AccModel, _Prefix, _Ns, _Options, _ImportList) ->
+    addSchemas(Xsds, AccModel, _Prefix, _Ns, _Options, _ImportList, 0).
+addSchemas([], AccModel, _Prefix, _Ns, _Options, _ImportList, _) ->
   AccModel;
-addSchemas([Xsd| Tail], AccModel, Prefix, Options, ImportList, Num) ->
+addSchemas([Xsd| Tail], AccModel, Prefix, Ns, Options, ImportList, Num) ->
   Model2 = case Xsd of
              undefined ->
                AccModel;
@@ -400,8 +403,8 @@ addSchemas([Xsd| Tail], AccModel, Prefix, Options, ImportList, Num) ->
                {ok, Model} =
                  erlsom_compile:compile_parsed_xsd(
                    Xsd,
-%                   [{prefix, Prefix++integer_to_list(Num)},
-                    [{prefix, Prefix},
+                   [{prefix, Prefix++integer_to_list(Num)},
+                    {namespaces, Ns},
                     {include_files, ImportList},
                     {include_fun, find_file_fun(Prefix)} |
                     Options]),
@@ -410,7 +413,7 @@ addSchemas([Xsd| Tail], AccModel, Prefix, Options, ImportList, Num) ->
                  _ -> erlsom:add_model(AccModel, Model)
                end
            end,
-  addSchemas(Tail, Model2, Prefix, Options, ImportList, Num+1).
+  addSchemas(Tail, Model2, Prefix, Ns, Options, ImportList, Num+1).
 
 find_file_fun(TopPrefix) ->
     fun(Namespace, Location, IncludeFiles, _IncludeDirs) ->
